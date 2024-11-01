@@ -1,0 +1,34 @@
+1. Main File Manager App
+
+    Role: Acts as the hub for accessing and managing the JSON file, launches the Shelf Management and Search apps.
+    Main Screen:
+        1. Button to open the Shelf Management App
+        2. Button to open the Search App
+        3. Option to view and validate the JSON file (with file read/write functionality)
+        4. Basic status indicator (e.g., JSON file loaded or issues detected)
+    File Handling:
+        1. Button to load a new JSON file or create a new one if none exists.
+        2. Option to back up or reset the JSON file as needed.
+
+2. Shelf Management App
+
+    Role: Manages locations, shelves, and nested shelves. Allows adding and deleting locations and shelves, and clearing nested shelves.
+    Main Screen:
+        1. Displays a list of current locations from the JSON file.
+        2. Options to add a new location, add/remove shelves, and create/delete nested shelves.
+        3. Clear Nested Shelf: Option to clear the contents of a selected nested shelf without deleting it. This removes all items within the nested shelf while keeping the shelf itself intact.
+        4. Popups for inputting names for new locations, shelves, and nested shelves.
+    JSON Integration:
+        1. Adds new locations and shelves to the JSON.
+        2. Maintains structure consistency and checks for duplicates.
+
+3. Search App
+
+    Role: Provides functionality to search for items by barcode (scanning or manual entry).
+    Main Screen:
+        1. Option to scan a barcode using the device’s camera.
+        2. Manual entry field to input a barcode.
+        3. Button to execute a search.
+    Results Display:
+        1. Shows whether the item exists, and if so, its location and nested shelf details.
+        2. If not found, provides an option to add it to a specified nested shelf.
