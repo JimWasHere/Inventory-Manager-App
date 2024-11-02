@@ -3,11 +3,17 @@ from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+import json
+import os
+
 
 
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        self.json_file_path = "assets/inventory.json"
+        self.backup_file_path = "assets/inventory_backup.json"
 
         layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
 
@@ -34,12 +40,34 @@ class MainScreen(Screen):
         self.status_label.text = "Search App opened."
 
     def load_json_file(self, instance):
-        # Placeholder for loading or creating JSON file
-        self.status_label.text = "JSON file loaded or created."
+        if not os.path.exists(self.json_file_path):
+            # Create a new JSON file with an empty structure
+            initial_data = {"locations": {}}
+            with open(self.json_file_path, 'w') as json_file:
+                json.dump(initial_data, json_file, indent=4)
+            self.status_label.text = "New JSON file created."
+        else:
+            # Load existing JSON file
+            with open(self.json_file_path, 'r') as json_file:
+                data = json.load(json_file)
+            self.status_label.text = "JSON file loaded successfully."
 
     def backup_reset_json_file(self, instance):
-        # Placeholder for backup or reset functionality
-        self.status_label.text = "JSON file backed up or reset."
+        # Backup current JSON file
+        if os.path.exists(self.json_file_path):
+            with open(self.json_file_path, 'r') as original_file:
+                data = original_file.read()
+            with open(self.backup_file_path, 'w') as backup_file:
+                backup_file.write(data)
+            self.status_label.text = "JSON file backed up successfully."
+        else:
+            self.status_label.text = "No JSON file to back up."
+
+        # Reset the JSON file to initial structure
+        initial_data = {"locations": {}}
+        with open(self.json_file_path, 'w') as json_file:
+            json.dump(initial_data, json_file, indent=4)
+        self.status_label.text = "JSON file reset to initial structure."
 
 
 class MainApp(App):
