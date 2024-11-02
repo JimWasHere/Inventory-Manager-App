@@ -43,26 +43,24 @@ class ShelfManagementScreen(Screen):
             json.dump(data, file, indent=4)
 
     def display_locations(self, instance):
-        """Display current locations with an option to add shelves in a popup."""
+        """Display current locations with an option to view shelves."""
         data = self.load_json_data()
         locations = data.get("locations", {})
-        location_list = "\n".join(locations.keys()) if locations else "No locations available."
 
         # Create layout for displaying locations
         popup_content = BoxLayout(orientation='vertical', spacing=10)
 
-        # If locations exist, show each location with an "Add Shelf" button
         if locations:
             for location_name in locations.keys():
                 location_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=44)
                 location_label = Label(text=location_name, size_hint_x=0.7)
-                add_shelf_button = Button(text="Add Shelf", size_hint_x=0.3)
+                view_shelves_button = Button(text="View Shelves", size_hint_x=0.3)
 
-                # Bind the "Add Shelf" button to open the add_shelf_popup for this location
-                add_shelf_button.bind(on_press=lambda btn, loc=location_name: self.add_shelf_popup(loc))
+                # Bind the "View Shelves" button to open the shelves of this location
+                view_shelves_button.bind(on_press=lambda btn, loc=location_name: self.view_shelves_popup(loc))
 
                 location_box.add_widget(location_label)
-                location_box.add_widget(add_shelf_button)
+                location_box.add_widget(view_shelves_button)
                 popup_content.add_widget(location_box)
         else:
             popup_content.add_widget(Label(text="No locations available."))
@@ -73,6 +71,47 @@ class ShelfManagementScreen(Screen):
 
         # Display the popup
         popup = Popup(title="Current Locations", content=popup_content, size_hint=(0.8, 0.8))
+        close_button.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def view_shelves_popup(self, location_name):
+        """Popup to view shelves in the selected location."""
+        data = self.load_json_data()
+        shelves = data["locations"].get(location_name, {})
+
+        # Create layout for displaying shelves
+        popup_content = BoxLayout(orientation='vertical', spacing=10)
+
+
+        if shelves:
+            for shelf_name in shelves.keys():
+                shelf_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=44)
+                shelf_label = Label(text=shelf_name, size_hint_x=0.7)
+                view_nested_shelves_button = Button(text="View Nested Shelves", size_hint_x=0.3)
+                remove_shelf_button = Button(text="Remove Shelf", size_hint_x=0.3)
+                remove_shelf_button.bind(
+                    on_press=lambda btn, sh=shelf_name: self.remove_shelf(location_name, sh, popup))
+
+                # Bind the button to view nested shelves in this shelf
+                view_nested_shelves_button.bind(
+                    on_press=lambda btn, sh=shelf_name: self.view_nested_shelves_popup(location_name, sh))
+
+                shelf_box.add_widget(shelf_label)
+                shelf_box.add_widget(view_nested_shelves_button)
+                popup_content.add_widget(shelf_box)
+        else:
+            popup_content.add_widget(Label(text=f"No shelves available in '{location_name}'."))
+
+        # Add "Add Shelf" button and close button
+        add_shelf_button = Button(text="Add New Shelf", size_hint=(1, 0.2))
+        add_shelf_button.bind(on_press=lambda x: self.add_shelf_popup(location_name))
+        popup_content.add_widget(add_shelf_button)
+
+        close_button = Button(text="Close", size_hint=(1, 0.2))
+        popup_content.add_widget(close_button)
+
+        # Display the popup
+        popup = Popup(title=f"Shelves in {location_name}", content=popup_content, size_hint=(0.8, 0.8))
         close_button.bind(on_press=popup.dismiss)
         popup.open()
 
@@ -230,13 +269,10 @@ class ShelfManagementScreen(Screen):
 
     def add_shelf(self, location_name, shelf_name, popup):
         """Add a new shelf to the specified location in the JSON structure."""
-        # Load existing data
         data = self.load_json_data()
 
-        # Check if the location exists
-        if location_name not in data["locations"]:
-            self.status_label.text = f"Location '{location_name}' does not exist."
-        elif shelf_name in data["locations"][location_name]:
+        # Check if the shelf already exists
+        if shelf_name in data["locations"][location_name]:
             self.status_label.text = f"Shelf '{shelf_name}' already exists in '{location_name}'."
         else:
             # Add the new shelf with an empty dictionary for nested shelves
@@ -244,5 +280,246 @@ class ShelfManagementScreen(Screen):
             self.save_json_data(data)
             self.status_label.text = f"Shelf '{shelf_name}' added to '{location_name}' successfully."
 
-        # Close the popup after adding the shelf
+        # Refresh by closing and reopening the shelves popup
         popup.dismiss()
+        self.view_shelves_popup(location_name)
+
+    def remove_shelf(self, location_name, shelf_name, popup):
+        """Remove the specified shelf from the JSON structure."""
+        data = self.load_json_data()
+        if shelf_name in data["locations"][location_name]:
+            del data["locations"][location_name][shelf_name]
+            self.save_json_data(data)
+            self.status_label.text = f"Shelf '{shelf_name}' removed from '{location_name}' successfully."
+
+        # Refresh the shelves popup
+        popup.dismiss()
+        self.view_shelves_popup(location_name)
+
+    def select_shelf_for_nested_shelf_popup(self, location_name):
+        """Popup to select a shelf to add a nested shelf."""
+        data = self.load_json_data()
+        shelves = data["locations"].get(location_name, {})
+
+        # Check if there are shelves available
+        if not shelves:
+            self.status_label.text = f"No shelves available in '{location_name}'. Please add a shelf first."
+            return
+
+        # Create a popup with a list of shelves
+        popup_content = BoxLayout(orientation='vertical', spacing=10)
+        for shelf_name in shelves.keys():
+            btn = Button(text=shelf_name, size_hint_y=None, height=44)
+            btn.bind(on_press=lambda btn: self.add_nested_shelf_popup(location_name, btn.text))
+            popup_content.add_widget(btn)
+
+        # Add close button
+        close_button = Button(text="Close", size_hint=(1, 0.2))
+        popup_content.add_widget(close_button)
+
+        # Display the popup
+        popup = Popup(title="Select Shelf", content=popup_content, size_hint=(0.8, 0.8))
+        close_button.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def add_nested_shelf_popup(self, location_name, shelf_name):
+        """Popup to add a new nested shelf to a selected shelf."""
+        popup_content = BoxLayout(orientation='vertical')
+
+        # Text input for the nested shelf name
+        nested_shelf_input = TextInput(hint_text="Enter nested shelf name")
+        popup_content.add_widget(nested_shelf_input)
+
+        # Button to confirm adding the nested shelf
+        add_button = Button(text="Add Nested Shelf", size_hint=(1, 0.2))
+        popup_content.add_widget(add_button)
+
+        popup = Popup(title=f"Add Nested Shelf to {shelf_name}", content=popup_content, size_hint=(0.8, 0.4))
+
+        # Bind the add_button to the method that will handle adding the nested shelf
+        add_button.bind(
+            on_press=lambda x: self.add_nested_shelf(location_name, shelf_name, nested_shelf_input.text, popup))
+        popup.open()
+
+    def add_nested_shelf(self, location_name, shelf_name, nested_shelf_name, popup):
+        """Add a new nested shelf to the specified shelf in the JSON structure."""
+        data = self.load_json_data()
+
+        # Check if the nested shelf already exists
+        if nested_shelf_name in data["locations"][location_name][shelf_name]:
+            self.status_label.text = f"Nested shelf '{nested_shelf_name}' already exists in '{shelf_name}'."
+        else:
+            # Add the new nested shelf with an empty list for items
+            data["locations"][location_name][shelf_name][nested_shelf_name] = []
+            self.save_json_data(data)
+            self.status_label.text = f"Nested shelf '{nested_shelf_name}' added to '{shelf_name}' successfully."
+
+        # Refresh by closing and reopening the nested shelves popup
+        popup.dismiss()
+        self.view_nested_shelves_popup(location_name, shelf_name)
+
+    def view_nested_shelves_popup(self, location_name, shelf_name):
+        """Popup to view nested shelves in the selected shelf."""
+        data = self.load_json_data()
+        nested_shelves = data["locations"][location_name].get(shelf_name, {})
+
+        # Create layout for displaying nested shelves
+        popup_content = BoxLayout(orientation='vertical', spacing=10)
+
+        if nested_shelves:
+            for nested_shelf_name in nested_shelves.keys():
+                nested_shelf_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=44)
+                nested_shelf_label = Label(text=nested_shelf_name, size_hint_x=0.4)
+
+                # Clear Shelf button
+                clear_button = Button(text="Clear Shelf", size_hint_x=0.2)
+                clear_button.bind(
+                    on_press=lambda btn, ns=nested_shelf_name: self.confirm_clear_shelf(location_name, shelf_name, ns))
+
+                # Scan Items button
+                scan_button = Button(text="Scan Items", size_hint_x=0.2)
+                scan_button.bind(
+                    on_press=lambda btn, ns=nested_shelf_name: self.scan_items(location_name, shelf_name, ns))
+
+                # Remove Nested Shelf button
+                remove_button = Button(text="Remove Nested Shelf", size_hint_x=0.2)
+                remove_button.bind(
+                    on_press=lambda btn, ns=nested_shelf_name: self.remove_nested_shelf(location_name, shelf_name, ns,
+                                                                                        popup))
+
+                nested_shelf_box.add_widget(nested_shelf_label)
+                nested_shelf_box.add_widget(clear_button)
+                nested_shelf_box.add_widget(scan_button)
+                nested_shelf_box.add_widget(remove_button)
+                popup_content.add_widget(nested_shelf_box)
+        else:
+            popup_content.add_widget(Label(text=f"No nested shelves in '{shelf_name}'."))
+
+        # Add "Add Nested Shelf" button and close button
+        add_nested_shelf_button = Button(text="Add New Nested Shelf", size_hint=(1, 0.2))
+        add_nested_shelf_button.bind(on_press=lambda x: self.add_nested_shelf_popup(location_name, shelf_name))
+        popup_content.add_widget(add_nested_shelf_button)
+
+        close_button = Button(text="Close", size_hint=(1, 0.2))
+        popup_content.add_widget(close_button)
+
+        # Display the popup
+        popup = Popup(title=f"Nested Shelves in {shelf_name}", content=popup_content, size_hint=(0.8, 0.8))
+        close_button.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def remove_nested_shelf(self, location_name, shelf_name, nested_shelf_name, popup):
+        """Remove the specified nested shelf from the JSON structure."""
+        data = self.load_json_data()
+        if nested_shelf_name in data["locations"][location_name][shelf_name]:
+            del data["locations"][location_name][shelf_name][nested_shelf_name]
+            self.save_json_data(data)
+            self.status_label.text = f"Nested shelf '{nested_shelf_name}' removed from '{shelf_name}' successfully."
+
+        # Refresh the nested shelves popup
+        popup.dismiss()
+        self.view_nested_shelves_popup(location_name, shelf_name)
+
+    def scan_items(self, location_name, shelf_name, nested_shelf_name):
+        """Scan and move items to the specified nested shelf."""
+        # Placeholder for barcode scanning logic
+        self.status_label.text = f"Now scanning items in '{nested_shelf_name}' under '{shelf_name}'."
+
+        # For demonstration, assume a scanned item ID
+        scanned_item_id = "item_12345"  # Replace with actual scanner output
+
+        # Load existing data
+        data = self.load_json_data()
+
+        # Check if item exists in any other location, shelf, or nested shelf
+        item_found = False
+        for loc, shelves in data["locations"].items():
+            for sh, nested_shelves in shelves.items():
+                for ns, items in nested_shelves.items():
+                    if scanned_item_id in items:
+                        # Item found, remove it from the old location
+                        items.remove(scanned_item_id)
+                        self.status_label.text = f"Item '{scanned_item_id}' moved from '{ns}' in '{sh}'."
+                        item_found = True
+                        break
+                if item_found:
+                    break
+            if item_found:
+                break
+
+        # Add the item to the new nested shelf
+        nested_shelf = data["locations"][location_name][shelf_name][nested_shelf_name]
+        nested_shelf.append(scanned_item_id)
+        self.save_json_data(data)
+        self.status_label.text = f"Item '{scanned_item_id}' moved to '{nested_shelf_name}' in '{shelf_name}'."
+
+    def move_item(self, scanned_item_id, new_location_name, new_shelf_name, new_nested_shelf_name):
+        """Move the specified item to a new nested shelf if it exists elsewhere."""
+        data = self.load_json_data()
+        item_found = False
+
+        # Search for the item in all locations, shelves, and nested shelves
+        for loc, shelves in data["locations"].items():
+            for sh, nested_shelves in shelves.items():
+                for ns, items in nested_shelves.items():
+                    if scanned_item_id in items:
+                        # Remove the item from its current nested shelf
+                        items.remove(scanned_item_id)
+                        self.status_label.text = f"Item '{scanned_item_id}' moved from '{ns}' in '{sh}'."
+                        item_found = True
+                        break
+                if item_found:
+                    break
+            if item_found:
+                break
+
+        # Add the item to the new nested shelf
+        data["locations"][new_location_name][new_shelf_name][new_nested_shelf_name].append(scanned_item_id)
+        self.save_json_data(data)
+        self.status_label.text = f"Item '{scanned_item_id}' moved to '{new_nested_shelf_name}' in '{new_shelf_name}'."
+
+    def clear_shelf(self, location_name, shelf_name, nested_shelf_name, confirmation_popup):
+        """Clear all items from the specified nested shelf without deleting the shelf."""
+        data = self.load_json_data()
+
+        # Access the nested shelf and clear its items
+        nested_shelf = data["locations"][location_name][shelf_name].get(nested_shelf_name, [])
+        if nested_shelf:
+            nested_shelf.clear()
+            self.save_json_data(data)
+            self.status_label.text = f"Cleared all items from '{nested_shelf_name}' in '{shelf_name}'."
+        else:
+            self.status_label.text = f"No items to clear in '{nested_shelf_name}'."
+
+        # Close the confirmation popup after clearing
+        confirmation_popup.dismiss()
+
+    def confirm_clear_shelf(self, location_name, shelf_name, nested_shelf_name):
+        """Popup to confirm clearing all items from a nested shelf."""
+        popup_content = BoxLayout(orientation='vertical', spacing=10)
+        popup_content.add_widget(Label(
+            text=f"Are you sure you want to clear all items from '{nested_shelf_name}' in '{shelf_name}'? This cannot be undone."))
+
+        # Define the popup first so we can reference it within button bindings
+        confirmation_popup = Popup(title="Confirm Clear Shelf", content=popup_content, size_hint=(0.8, 0.4))
+
+        # Yes button to confirm clearing
+        yes_button = Button(text="Yes", size_hint=(1, 0.2))
+        yes_button.bind(
+            on_press=lambda x: self.clear_shelf(location_name, shelf_name, nested_shelf_name, confirmation_popup))
+
+        # No button to cancel
+        no_button = Button(text="No", size_hint=(1, 0.2))
+        no_button.bind(on_press=confirmation_popup.dismiss)
+
+        popup_content.add_widget(yes_button)
+        popup_content.add_widget(no_button)
+
+        # Display the confirmation popup
+        confirmation_popup.open()
+
+
+
+
+
+
