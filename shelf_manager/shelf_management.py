@@ -4,7 +4,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
-from kivy.uix.dropdown import DropDown
+from camera_scanner import CameraScanner
 import json
 import os
 
@@ -120,7 +120,7 @@ class ShelfManagementScreen(Screen):
         popup_content = BoxLayout(orientation='vertical')
 
         # Text input for the location name
-        location_input = TextInput(hint_text="Enter location name")
+        location_input = TextInput(hint_text="Enter location name", focus=True)
         popup_content.add_widget(location_input)
 
         # Button to confirm adding the location
@@ -254,7 +254,7 @@ class ShelfManagementScreen(Screen):
         popup_content = BoxLayout(orientation='vertical')
 
         # Text input for the shelf name
-        shelf_input = TextInput(hint_text="Enter shelf name")
+        shelf_input = TextInput(hint_text="Enter shelf name", focus=True)
         popup_content.add_widget(shelf_input)
 
         # Button to confirm adding the shelf
@@ -327,7 +327,7 @@ class ShelfManagementScreen(Screen):
         popup_content = BoxLayout(orientation='vertical')
 
         # Text input for the nested shelf name
-        nested_shelf_input = TextInput(hint_text="Enter nested shelf name")
+        nested_shelf_input = TextInput(hint_text="Enter nested shelf name", focus=True)
         popup_content.add_widget(nested_shelf_input)
 
         # Button to confirm adding the nested shelf
@@ -421,62 +421,167 @@ class ShelfManagementScreen(Screen):
         self.view_nested_shelves_popup(location_name, shelf_name)
 
     def scan_items(self, location_name, shelf_name, nested_shelf_name):
-        """Scan and move items to the specified nested shelf."""
-        # Placeholder for barcode scanning logic
-        self.status_label.text = f"Now scanning items in '{nested_shelf_name}' under '{shelf_name}'."
+        """Use the camera to scan and continuously add items to the specified nested shelf."""
 
-        # For demonstration, assume a scanned item ID
-        scanned_item_id = "item_12345"  # Replace with actual scanner output
+        def handle_barcode_data(barcode_data):
+            self.process_scanned_item(barcode_data, location_name, shelf_name, nested_shelf_name)
 
-        # Load existing data
-        data = self.load_json_data()
+        # Set up the CameraScanner widget with handle_barcode_data as the callback
+        scanner_widget = CameraScanner(scan_callback=handle_barcode_data)
 
-        # Check if item exists in any other location, shelf, or nested shelf
-        item_found = False
-        for loc, shelves in data["locations"].items():
-            for sh, nested_shelves in shelves.items():
-                for ns, items in nested_shelves.items():
-                    if scanned_item_id in items:
-                        # Item found, remove it from the old location
-                        items.remove(scanned_item_id)
-                        self.status_label.text = f"Item '{scanned_item_id}' moved from '{ns}' in '{sh}'."
-                        item_found = True
+        # Add a Manual Entry button
+        popup_content = BoxLayout(orientation='vertical')
+        popup_content.add_widget(scanner_widget)
+        manual_entry_button = Button(text="Manual Entry", size_hint=(1, 0.1))
+        manual_entry_button.bind(
+            on_press=lambda x: self.manual_entry_popup(location_name, shelf_name, nested_shelf_name, scanner_widget))
+        popup_content.add_widget(manual_entry_button)
+
+        # Add a Close button
+        close_button = Button(text="Close", size_hint=(1, 0.1))
+        close_button.bind(on_press=lambda x: scanner_popup.dismiss())
+        popup_content.add_widget(close_button)
+
+        # Display the camera scanner in a popup with the Manual Entry and Close buttons
+        scanner_popup = Popup(title="Scan Items", content=popup_content, size_hint=(0.9, 0.9))
+        scanner_popup.bind(on_dismiss=lambda x: scanner_widget.release_camera())
+        scanner_popup.open()
+
+    def manual_entry_popup(self, location_name, shelf_name, nested_shelf_name, scanner_widget):
+        """Open a popup to manually enter the order number and line number."""
+        # Pause the camera while entering data manually
+        scanner_widget.pause_camera()
+
+        popup_content = BoxLayout(orientation='vertical', spacing=10)
+        order_input = TextInput(hint_text="Enter order number", multiline=False)
+        line_input = TextInput(hint_text="Enter line number", multiline=False)
+        submit_button = Button(text="Submit", size_hint=(1, 0.2))
+
+        popup_content.add_widget(order_input)
+        popup_content.add_widget(line_input)
+        popup_content.add_widget(submit_button)
+
+        manual_popup = Popup(title="Manual Entry", content=popup_content, size_hint=(0.6, 0.4))
+
+        def on_submit(instance):
+            # Combine order number and line number, then process as scanned item
+            manual_barcode = f"{order_input.text}-{line_input.text}"
+            self.process_scanned_item(manual_barcode, location_name, shelf_name, nested_shelf_name)
+            manual_popup.dismiss()
+            scanner_widget.resume_camera()  # Resume the camera after entering data
+
+        # Bind the submit button to process the entry and close the popup
+        submit_button.bind(on_press=on_submit)
+        manual_popup.bind(
+            on_dismiss=lambda x: scanner_widget.resume_camera())  # Ensure camera resumes if popup is closed
+
+        # Open the manual entry popup
+        manual_popup.open()
+
+    def process_barcode(self, barcode_data, callback):
+        """Process barcode data to ensure consistent format."""
+        if "-" in barcode_data:
+            # Barcode is already in the correct format
+            callback(barcode_data)
+        else:
+            # Barcode missing hyphen; prompt for line number
+            order_number = barcode_data[:10]  # First 10 digits as order number
+            self.prompt_line_number(order_number, callback)
+
+    def prompt_line_number(self, order_number, callback):
+        """Prompt the user to enter a line number and process the item with it."""
+
+        # Ensure line_popup is cleared and create a new popup instance
+        if hasattr(self, 'line_popup'):
+            self.line_popup.dismiss()  # Dismiss any existing instance
+
+        line_popup_content = BoxLayout(orientation='vertical')
+        line_input = TextInput(hint_text="Enter line number", focus=True)
+        submit_button = Button(text="Submit")
+
+        line_popup_content.add_widget(line_input)
+        line_popup_content.add_widget(submit_button)
+
+        self.line_popup = Popup(title="Enter Line Number", content=line_popup_content, size_hint=(0.6, 0.4))
+
+        # Bind submit button to finalize_barcode and dismiss the popup after processing
+        submit_button.bind(
+            on_press=lambda x: self.finalize_barcode(order_number, line_input.text, callback, self.line_popup))
+
+        # Bind a confirmation print to ensure popup is opened and dismissed correctly
+        self.line_popup.bind(on_open=lambda x: print("Line number popup opened."))
+        self.line_popup.bind(on_dismiss=lambda x: print("Line number popup dismissed."))
+
+        self.line_popup.open()
+
+    def finalize_barcode(self, order_number, line_number, callback, popup):
+        """Combine order number and line number, call the callback, and dismiss the popup."""
+        processed_barcode = f"{order_number}-{line_number}"
+        print(f"Finalized barcode: {processed_barcode}")  # Debug: check processed barcode
+        callback(processed_barcode)
+        popup.dismiss()  # Dismiss the popup after processing
+        print("Popup dismissed.")  # Debug: confirm popup dismissal
+
+    def set_line_number(self, line_number, popup):
+        """Set the line number and dismiss the popup."""
+        self._line_number = line_number
+        popup.dismiss()
+
+    def process_scanned_item(self, barcode_data, location_name, shelf_name, nested_shelf_name):
+        """Process scanned barcode and add/move the item to the nested shelf."""
+
+        def on_barcode_processed(parsed_barcode):
+            # Existing logic to handle moving or adding the parsed barcode
+            data = self.load_json_data()
+            item_found = False
+
+            # Check if item exists elsewhere and move if necessary
+            for loc, shelves in data["locations"].items():
+                for sh, nested_shelves in shelves.items():
+                    for ns, items in nested_shelves.items():
+                        if parsed_barcode in items:
+                            items.remove(parsed_barcode)
+                            self.status_label.text = f"Item '{parsed_barcode}' moved from '{ns}' in '{sh}'."
+                            item_found = True
+                            break
+                    if item_found:
                         break
                 if item_found:
                     break
-            if item_found:
-                break
 
-        # Add the item to the new nested shelf
-        nested_shelf = data["locations"][location_name][shelf_name][nested_shelf_name]
-        nested_shelf.append(scanned_item_id)
-        self.save_json_data(data)
-        self.status_label.text = f"Item '{scanned_item_id}' moved to '{nested_shelf_name}' in '{shelf_name}'."
+            # Add the item to the new nested shelf
+            nested_shelf = data["locations"][location_name][shelf_name][nested_shelf_name]
+            nested_shelf.append(parsed_barcode)
+            self.save_json_data(data)
+            self.status_label.text = f"Item '{parsed_barcode}' moved to '{nested_shelf_name}' in '{shelf_name}'."
 
-    def move_item(self, scanned_item_id, new_location_name, new_shelf_name, new_nested_shelf_name):
-        """Move the specified item to a new nested shelf if it exists elsewhere."""
-        data = self.load_json_data()
-        item_found = False
+        # Call process_barcode with the barcode data and the callback
+        self.process_barcode(barcode_data, on_barcode_processed)
 
-        # Search for the item in all locations, shelves, and nested shelves
-        for loc, shelves in data["locations"].items():
-            for sh, nested_shelves in shelves.items():
-                for ns, items in nested_shelves.items():
-                    if scanned_item_id in items:
-                        # Remove the item from its current nested shelf
-                        items.remove(scanned_item_id)
-                        self.status_label.text = f"Item '{scanned_item_id}' moved from '{ns}' in '{sh}'."
-                        item_found = True
-                        break
-                if item_found:
-                    break
-            if item_found:
-                break
-
-        # Add the item to the new nested shelf
-        data["locations"][new_location_name][new_shelf_name][new_nested_shelf_name].append(scanned_item_id)
-        self.save_json_data(data)
-        self.status_label.text = f"Item '{scanned_item_id}' moved to '{new_nested_shelf_name}' in '{new_shelf_name}'."
+    # def move_item(self, scanned_item_id, new_location_name, new_shelf_name, new_nested_shelf_name):
+    #     """Move the specified item to a new nested shelf if it exists elsewhere."""
+    #     data = self.load_json_data()
+    #     item_found = False
+    #
+    #     # Search for the item in all locations, shelves, and nested shelves
+    #     for loc, shelves in data["locations"].items():
+    #         for sh, nested_shelves in shelves.items():
+    #             for ns, items in nested_shelves.items():
+    #                 if scanned_item_id in items:
+    #                     # Remove the item from its current nested shelf
+    #                     items.remove(scanned_item_id)
+    #                     self.status_label.text = f"Item '{scanned_item_id}' moved from '{ns}' in '{sh}'."
+    #                     item_found = True
+    #                     break
+    #             if item_found:
+    #                 break
+    #         if item_found:
+    #             break
+    #
+    #     # Add the item to the new nested shelf
+    #     data["locations"][new_location_name][new_shelf_name][new_nested_shelf_name].append(scanned_item_id)
+    #     self.save_json_data(data)
+    #     self.status_label.text = f"Item '{scanned_item_id}' moved to '{new_nested_shelf_name}' in '{new_shelf_name}'."
 
     def clear_shelf(self, location_name, shelf_name, nested_shelf_name, confirmation_popup):
         """Clear all items from the specified nested shelf without deleting the shelf."""
