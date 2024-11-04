@@ -4,7 +4,8 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
-from camera_scanner import CameraScanner
+from kivy.core.audio import SoundLoader
+from modules.camera_scanner import CameraScanner
 import json
 import os
 
@@ -120,7 +121,7 @@ class ShelfManagementScreen(Screen):
         popup_content = BoxLayout(orientation='vertical')
 
         # Text input for the location name
-        location_input = TextInput(hint_text="Enter location name", focus=True)
+        location_input = TextInput(hint_text="Enter location name")
         popup_content.add_widget(location_input)
 
         # Button to confirm adding the location
@@ -254,7 +255,7 @@ class ShelfManagementScreen(Screen):
         popup_content = BoxLayout(orientation='vertical')
 
         # Text input for the shelf name
-        shelf_input = TextInput(hint_text="Enter shelf name", focus=True)
+        shelf_input = TextInput(hint_text="Enter shelf name")
         popup_content.add_widget(shelf_input)
 
         # Button to confirm adding the shelf
@@ -327,7 +328,7 @@ class ShelfManagementScreen(Screen):
         popup_content = BoxLayout(orientation='vertical')
 
         # Text input for the nested shelf name
-        nested_shelf_input = TextInput(hint_text="Enter nested shelf name", focus=True)
+        nested_shelf_input = TextInput(hint_text="Enter nested shelf name")
         popup_content.add_widget(nested_shelf_input)
 
         # Button to confirm adding the nested shelf
@@ -382,10 +383,9 @@ class ShelfManagementScreen(Screen):
                     on_press=lambda btn, ns=nested_shelf_name: self.scan_items(location_name, shelf_name, ns))
 
                 # Remove Nested Shelf button
-                remove_button = Button(text="Remove Nested Shelf", size_hint_x=0.2)
+                remove_button = Button(text="Remove Shelf", size_hint_x=0.2)
                 remove_button.bind(
-                    on_press=lambda btn, ns=nested_shelf_name: self.remove_nested_shelf(location_name, shelf_name, ns,
-                                                                                        popup))
+                    on_press=lambda btn, ns=nested_shelf_name: self.remove_nested_shelf(location_name, shelf_name, ns))
 
                 nested_shelf_box.add_widget(nested_shelf_label)
                 nested_shelf_box.add_widget(clear_button)
@@ -408,17 +408,38 @@ class ShelfManagementScreen(Screen):
         close_button.bind(on_press=popup.dismiss)
         popup.open()
 
-    def remove_nested_shelf(self, location_name, shelf_name, nested_shelf_name, popup):
-        """Remove the specified nested shelf from the JSON structure."""
+    def remove_nested_shelf(self, location_name, shelf_name, nested_shelf_name):
+        """Prompt to confirm and delete a nested shelf if the user confirms."""
+        # Create confirmation popup layout
+        popup_content = BoxLayout(orientation='vertical')
+        popup_content.add_widget(Label(text=f"Are you sure you want to delete nested shelf '{nested_shelf_name}'?"))
+
+        # Yes and No buttons
+        yes_button = Button(text="Yes", size_hint=(1, 0.3))
+        no_button = Button(text="No", size_hint=(1, 0.3))
+        popup_content.add_widget(yes_button)
+        popup_content.add_widget(no_button)
+
+        # Confirmation popup
+        confirm_popup = Popup(title="Confirm Deletion", content=popup_content, size_hint=(0.7, 0.4))
+
+        # Bind the Yes button to call `confirm_delete_nested_shelf`
+        yes_button.bind(
+            on_press=lambda instance: self.confirm_delete_nested_shelf(location_name, shelf_name, nested_shelf_name,
+                                                                       confirm_popup))
+        no_button.bind(on_press=confirm_popup.dismiss)
+
+        confirm_popup.open()
+
+    def confirm_delete_nested_shelf(self, location_name, shelf_name, nested_shelf_name, popup):
+        """Delete the nested shelf after confirmation."""
+        # Load data and remove the specified nested shelf
         data = self.load_json_data()
         if nested_shelf_name in data["locations"][location_name][shelf_name]:
             del data["locations"][location_name][shelf_name][nested_shelf_name]
             self.save_json_data(data)
-            self.status_label.text = f"Nested shelf '{nested_shelf_name}' removed from '{shelf_name}' successfully."
-
-        # Refresh the nested shelves popup
+            self.status_label.text = f"Nested shelf '{nested_shelf_name}' has been deleted successfully."
         popup.dismiss()
-        self.view_nested_shelves_popup(location_name, shelf_name)
 
     def scan_items(self, location_name, shelf_name, nested_shelf_name):
         """Use the camera to scan and continuously add items to the specified nested shelf."""
@@ -491,12 +512,13 @@ class ShelfManagementScreen(Screen):
     def prompt_line_number(self, order_number, callback):
         """Prompt the user to enter a line number and process the item with it."""
 
-        # Ensure line_popup is cleared and create a new popup instance
+        # Ensure any existing popup is dismissed
         if hasattr(self, 'line_popup'):
             self.line_popup.dismiss()  # Dismiss any existing instance
 
         line_popup_content = BoxLayout(orientation='vertical')
-        line_input = TextInput(hint_text="Enter line number", focus=True)
+        line_input = TextInput(hint_text="Enter line number",
+                               multiline=False)  # Keeps it single line without Enter adding \n
         submit_button = Button(text="Submit")
 
         line_popup_content.add_widget(line_input)
@@ -504,23 +526,33 @@ class ShelfManagementScreen(Screen):
 
         self.line_popup = Popup(title="Enter Line Number", content=line_popup_content, size_hint=(0.6, 0.4))
 
-        # Bind submit button to finalize_barcode and dismiss the popup after processing
-        submit_button.bind(
-            on_press=lambda x: self.finalize_barcode(order_number, line_input.text, callback, self.line_popup))
+        # Define what happens on submit button press or Enter key
+        def on_submit(instance):
+            line_number = line_input.text
+            self.finalize_barcode(order_number, line_number, callback, self.line_popup)
 
-        # Bind a confirmation print to ensure popup is opened and dismissed correctly
-        self.line_popup.bind(on_open=lambda x: print("Line number popup opened."))
-        self.line_popup.bind(on_dismiss=lambda x: print("Line number popup dismissed."))
+        # Bind both the submit button and Enter key to finalize_barcode
+        submit_button.bind(on_press=on_submit)
+        line_input.bind(on_text_validate=on_submit)  # Trigger submit on Enter key
 
+        # Open popup and add debug statements
+        print("Opening line number popup.")  # Debug: print when opening
+        self.line_popup.bind(on_dismiss=lambda x: print("Line number popup dismissed."))  # Debug for dismissal
         self.line_popup.open()
 
     def finalize_barcode(self, order_number, line_number, callback, popup):
-        """Combine order number and line number, call the callback, and dismiss the popup."""
+        """Combine order number and line number, play sound, and display success message."""
         processed_barcode = f"{order_number}-{line_number}"
-        print(f"Finalized barcode: {processed_barcode}")  # Debug: check processed barcode
         callback(processed_barcode)
-        popup.dismiss()  # Dismiss the popup after processing
-        print("Popup dismissed.")  # Debug: confirm popup dismissal
+        popup.dismiss()
+
+        # Play success tone from assets
+        success_sound = SoundLoader.load('assets/beep.mp3')
+        if success_sound:
+            success_sound.play()
+
+        # Display success message
+        self.status_label.text = f"Item '{processed_barcode}' successfully added to the nested shelf."
 
     def set_line_number(self, line_number, popup):
         """Set the line number and dismiss the popup."""
@@ -558,30 +590,6 @@ class ShelfManagementScreen(Screen):
         # Call process_barcode with the barcode data and the callback
         self.process_barcode(barcode_data, on_barcode_processed)
 
-    # def move_item(self, scanned_item_id, new_location_name, new_shelf_name, new_nested_shelf_name):
-    #     """Move the specified item to a new nested shelf if it exists elsewhere."""
-    #     data = self.load_json_data()
-    #     item_found = False
-    #
-    #     # Search for the item in all locations, shelves, and nested shelves
-    #     for loc, shelves in data["locations"].items():
-    #         for sh, nested_shelves in shelves.items():
-    #             for ns, items in nested_shelves.items():
-    #                 if scanned_item_id in items:
-    #                     # Remove the item from its current nested shelf
-    #                     items.remove(scanned_item_id)
-    #                     self.status_label.text = f"Item '{scanned_item_id}' moved from '{ns}' in '{sh}'."
-    #                     item_found = True
-    #                     break
-    #             if item_found:
-    #                 break
-    #         if item_found:
-    #             break
-    #
-    #     # Add the item to the new nested shelf
-    #     data["locations"][new_location_name][new_shelf_name][new_nested_shelf_name].append(scanned_item_id)
-    #     self.save_json_data(data)
-    #     self.status_label.text = f"Item '{scanned_item_id}' moved to '{new_nested_shelf_name}' in '{new_shelf_name}'."
 
     def clear_shelf(self, location_name, shelf_name, nested_shelf_name, confirmation_popup):
         """Clear all items from the specified nested shelf without deleting the shelf."""

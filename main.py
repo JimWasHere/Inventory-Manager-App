@@ -6,7 +6,8 @@ from kivy.uix.label import Label
 import json
 import os
 
-from shelf_manager.shelf_management import ShelfManagementScreen  # Ensure folder structure is correct
+from shelf_manager.shelf_management import ShelfManagementScreen
+from search_manager.search_screen import SearchScreen
 
 
 class MainScreen(Screen):
@@ -37,7 +38,8 @@ class MainScreen(Screen):
         self.manager.current = 'shelf_management'
 
     def open_search_app(self, instance):
-        # Placeholder for actual screen switch or app launch logic
+        """Switch to the Search screen."""
+        self.manager.current = 'search'  # Set the current screen to 'search'
         self.status_label.text = "Search App opened."
 
     def load_json_file(self, instance):
@@ -76,6 +78,8 @@ class MainApp(App):
         sm = ScreenManager()
         sm.add_widget(MainScreen(name='main'))
         sm.add_widget(ShelfManagementScreen(name='shelf_management', json_file_path="assets/inventory.json"))
+        sm.add_widget(SearchScreen(json_file_path="assets/inventory.json", name='search'))
+
         return sm
 
 

@@ -4,6 +4,7 @@ from kivy.uix.image import Image
 from kivy.graphics.texture import Texture
 from kivy.clock import Clock
 
+
 class CameraScanner(Image):
     def __init__(self, scan_callback, **kwargs):
         super().__init__(**kwargs)
