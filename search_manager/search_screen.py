@@ -69,7 +69,7 @@ class SearchScreen(Screen):
                 for nested_shelf_name, items in nested_shelves.items():
                     if barcode in items:
                         # Play the 'found' sound when item is located
-                        found_beep = SoundLoader.load('../assets/found_beep.mp3')
+                        found_beep = SoundLoader.load('./assets/found_beep.mp3')
                         if found_beep:
                             found_beep.play()
                         location_info = f"Found in {loc_name} > {shelf_name} > {nested_shelf_name}"
@@ -82,7 +82,7 @@ class SearchScreen(Screen):
 
         # Play 'not found' sound only if item was not located
         if not found:
-            not_found_beep = SoundLoader.load('../assets/not_found_tone.mp3')
+            not_found_beep = SoundLoader.load('./assets/not_found_tone.mp3')
             if not_found_beep:
                 not_found_beep.play()
 
